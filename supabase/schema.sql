@@ -34,12 +34,16 @@ CREATE TABLE projects (
   app_type VARCHAR(100),
   complexity VARCHAR(50) CHECK (complexity IN ('simple', 'moderate', 'complex')),
   tech_stack JSONB,
+  dependencies JSONB,
+  env_variables JSONB,
   tokens_used INTEGER DEFAULT 0,
   preview_url VARCHAR(500),
   production_url VARCHAR(500),
   custom_domain VARCHAR(255),
+  custom_domain_verified BOOLEAN DEFAULT false,
   github_repo_url VARCHAR(500),
   supabase_project_id VARCHAR(255),
+  vercel_project_id VARCHAR(255),
   last_build_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT NOW(),
   updated_at TIMESTAMP DEFAULT NOW()
@@ -110,12 +114,51 @@ CREATE TABLE deployments (
   created_at TIMESTAMP DEFAULT NOW()
 );
 
+-- Project files table (stores generated code)
+CREATE TABLE project_files (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  file_path VARCHAR(500) NOT NULL,
+  file_content TEXT NOT NULL,
+  file_type VARCHAR(50),
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Chat messages table (for AI iterations)
+CREATE TABLE chat_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  role VARCHAR(50) NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+  content TEXT NOT NULL,
+  tokens_used INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+-- Custom domains table
+CREATE TABLE custom_domains (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
+  domain VARCHAR(255) NOT NULL UNIQUE,
+  verified BOOLEAN DEFAULT false,
+  verification_token VARCHAR(255),
+  dns_records JSONB,
+  status VARCHAR(50) DEFAULT 'pending' CHECK (status IN ('pending', 'verifying', 'active', 'failed')),
+  created_at TIMESTAMP DEFAULT NOW(),
+  verified_at TIMESTAMP
+);
+
 -- Indexes for performance
 CREATE INDEX idx_projects_user_id ON projects(user_id);
 CREATE INDEX idx_builds_project_id ON builds(project_id);
 CREATE INDEX idx_iterations_project_id ON iterations(project_id);
 CREATE INDEX idx_usage_logs_user_id ON usage_logs(user_id);
 CREATE INDEX idx_usage_logs_created_at ON usage_logs(created_at);
+CREATE INDEX idx_project_files_project_id ON project_files(project_id);
+CREATE INDEX idx_chat_messages_project_id ON chat_messages(project_id);
+CREATE INDEX idx_custom_domains_project_id ON custom_domains(project_id);
+CREATE INDEX idx_custom_domains_domain ON custom_domains(domain);
 
 -- Row Level Security (RLS) Policies
 
@@ -127,6 +170,9 @@ ALTER TABLE iterations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE usage_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE deployments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_files ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE custom_domains ENABLE ROW LEVEL SECURITY;
 
 -- Users policies
 CREATE POLICY "Users can view own profile" ON users
@@ -186,6 +232,78 @@ CREATE POLICY "Users can view deployments of own projects" ON deployments
     )
   );
 
+-- Project files policies
+CREATE POLICY "Users can view files of own projects" ON project_files
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = project_files.project_id
+      AND projects.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can insert files for own projects" ON project_files
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = project_files.project_id
+      AND projects.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update files of own projects" ON project_files
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = project_files.project_id
+      AND projects.user_id = auth.uid()
+    )
+  );
+
+-- Chat messages policies
+CREATE POLICY "Users can view chat messages of own projects" ON chat_messages
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert own chat messages" ON chat_messages
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Custom domains policies
+CREATE POLICY "Users can view domains of own projects" ON custom_domains
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = custom_domains.project_id
+      AND projects.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can insert domains for own projects" ON custom_domains
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = custom_domains.project_id
+      AND projects.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update domains of own projects" ON custom_domains
+  FOR UPDATE USING (
+    EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = custom_domains.project_id
+      AND projects.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can delete domains of own projects" ON custom_domains
+  FOR DELETE USING (
+    EXISTS (
+      SELECT 1 FROM projects
+      WHERE projects.id = custom_domains.project_id
+      AND projects.user_id = auth.uid()
+    )
+  );
+
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -200,4 +318,7 @@ CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON projects
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_project_files_updated_at BEFORE UPDATE ON project_files
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
