@@ -129,8 +129,12 @@ export default function ReviewScopePage() {
 
       if (error) throw error
 
-      // Navigate to build page
-      router.push(`/project/${project.id}/build`)
+      // Clear session storage
+      sessionStorage.removeItem('projectScope')
+      sessionStorage.removeItem('originalPrompt')
+
+      // Navigate to project page
+      router.push(`/project/${project.id}`)
     } catch (error: any) {
       console.error('Error creating project:', error)
       alert('Failed to create project. Please try again.')

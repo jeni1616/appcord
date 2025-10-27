@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase/client"
 import { Project } from "@/types"
+import { CustomDomainManager } from "@/components/CustomDomainManager"
 
 export default function ProjectViewPage() {
   const router = useRouter()
@@ -18,10 +19,15 @@ export default function ProjectViewPage() {
   const [project, setProject] = useState<Project | null>(null)
   const [loading, setLoading] = useState(true)
   const [chatMessage, setChatMessage] = useState("")
+  const [chatMessages, setChatMessages] = useState<any[]>([])
   const [iframeView, setIframeView] = useState<'desktop' | 'mobile'>('desktop')
+  const [isBuilding, setIsBuilding] = useState(false)
+  const [isDeploying, setIsDeploying] = useState(false)
+  const [isSendingMessage, setIsSendingMessage] = useState(false)
 
   useEffect(() => {
     fetchProject()
+    fetchChatHistory()
   }, [projectId])
 
   const fetchProject = async () => {
@@ -41,16 +47,116 @@ export default function ProjectViewPage() {
     setLoading(false)
   }
 
+  const fetchChatHistory = async () => {
+    try {
+      const response = await fetch(`/api/projects/chat?projectId=${projectId}`)
+      const data = await response.json()
+
+      if (data.success) {
+        setChatMessages(data.messages)
+      }
+    } catch (error) {
+      console.error('Error fetching chat history:', error)
+    }
+  }
+
+  const handleBuild = async () => {
+    if (!project) return
+
+    setIsBuilding(true)
+    try {
+      const response = await fetch('/api/projects/generate-code', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        alert(`Build successful! Generated ${data.filesCount} files.`)
+        await fetchProject()
+      } else {
+        alert(`Build failed: ${data.error}`)
+      }
+    } catch (error: any) {
+      alert(`Build error: ${error.message}`)
+    } finally {
+      setIsBuilding(false)
+    }
+  }
+
+  const handleDeploy = async () => {
+    if (!project) return
+
+    setIsDeploying(true)
+    try {
+      const response = await fetch('/api/projects/deploy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        alert(`Deployment successful!\nPreview: ${data.previewUrl}`)
+        await fetchProject()
+      } else {
+        alert(`Deployment failed: ${data.error}`)
+      }
+    } catch (error: any) {
+      alert(`Deployment error: ${error.message}`)
+    } finally {
+      setIsDeploying(false)
+    }
+  }
+
   const handleChatSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!chatMessage.trim()) return
+    if (!chatMessage.trim() || isSendingMessage) return
 
-    // Here you would implement the AI chat functionality
-    console.log('Chat message:', chatMessage)
+    const userMessage = chatMessage
     setChatMessage("")
+    setIsSendingMessage(true)
 
-    // For now, just show an alert
-    alert('Chat functionality will be implemented in a future update!')
+    // Add user message to UI immediately
+    setChatMessages(prev => [...prev, {
+      role: 'user',
+      content: userMessage,
+      created_at: new Date().toISOString(),
+    }])
+
+    try {
+      const response = await fetch('/api/projects/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          message: userMessage,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        // Add AI response to UI
+        setChatMessages(prev => [...prev, {
+          role: 'assistant',
+          content: data.response,
+          created_at: new Date().toISOString(),
+        }])
+
+        // Refresh project to get updated files
+        await fetchProject()
+      } else {
+        alert(`Chat error: ${data.error}`)
+      }
+    } catch (error: any) {
+      alert(`Error sending message: ${error.message}`)
+    } finally {
+      setIsSendingMessage(false)
+    }
   }
 
   if (loading) {
@@ -115,9 +221,21 @@ export default function ProjectViewPage() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-3xl font-bold">{project.name}</h1>
-            <Badge className={getStatusColor(project.status)}>
-              {project.status}
-            </Badge>
+            <div className="flex items-center space-x-3">
+              <Badge className={getStatusColor(project.status)}>
+                {project.status}
+              </Badge>
+              {project.status === 'draft' && (
+                <Button onClick={handleBuild} disabled={isBuilding}>
+                  {isBuilding ? 'Building...' : 'Build App'}
+                </Button>
+              )}
+              {(project.status === 'ready' || project.status === 'deployed') && (
+                <Button onClick={handleDeploy} disabled={isDeploying}>
+                  {isDeploying ? 'Deploying...' : project.status === 'deployed' ? 'Redeploy' : 'Deploy'}
+                </Button>
+              )}
+            </div>
           </div>
           <p className="text-gray-600">{project.description}</p>
         </div>
@@ -211,17 +329,52 @@ export default function ProjectViewPage() {
                 <CardDescription>Make changes to your app</CardDescription>
               </CardHeader>
               <CardContent>
-                <form onSubmit={handleChatSubmit} className="space-y-3">
-                  <Textarea
-                    value={chatMessage}
-                    onChange={(e) => setChatMessage(e.target.value)}
-                    placeholder="e.g., Make the header blue..."
-                    rows={4}
-                  />
-                  <Button type="submit" className="w-full" size="sm">
-                    Send
-                  </Button>
-                </form>
+                <div className="space-y-3">
+                  {/* Chat History */}
+                  {chatMessages.length > 0 && (
+                    <div className="max-h-64 overflow-y-auto space-y-2 mb-3 p-2 bg-gray-50 rounded">
+                      {chatMessages.map((msg, idx) => (
+                        <div
+                          key={idx}
+                          className={`text-sm p-2 rounded ${
+                            msg.role === 'user'
+                              ? 'bg-blue-100 text-blue-900 ml-4'
+                              : 'bg-gray-200 text-gray-900 mr-4'
+                          }`}
+                        >
+                          <div className="font-semibold text-xs mb-1">
+                            {msg.role === 'user' ? 'You' : 'AI'}
+                          </div>
+                          <div>{msg.content}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Chat Input */}
+                  <form onSubmit={handleChatSubmit} className="space-y-3">
+                    <Textarea
+                      value={chatMessage}
+                      onChange={(e) => setChatMessage(e.target.value)}
+                      placeholder="e.g., Make the header blue..."
+                      rows={4}
+                      disabled={isSendingMessage || project.status === 'draft'}
+                    />
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      size="sm"
+                      disabled={isSendingMessage || project.status === 'draft'}
+                    >
+                      {isSendingMessage ? 'Sending...' : 'Send'}
+                    </Button>
+                    {project.status === 'draft' && (
+                      <p className="text-xs text-gray-500">
+                        Build your app first to start chatting
+                      </p>
+                    )}
+                  </form>
+                </div>
               </CardContent>
             </Card>
 
@@ -275,6 +428,9 @@ export default function ProjectViewPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Custom Domain Management */}
+            <CustomDomainManager projectId={projectId} projectStatus={project.status} />
           </div>
         </div>
       </div>
