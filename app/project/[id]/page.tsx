@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase/client"
 import { Project } from "@/types"
-import { CustomDomainManager } from "@/components/CustomDomainManager"
+import sdk from '@stackblitz/sdk'
+import type { Project as StackBlitzProject } from '@stackblitz/sdk'
 
 export default function ProjectViewPage() {
   const router = useRouter()
@@ -22,13 +23,23 @@ export default function ProjectViewPage() {
   const [chatMessages, setChatMessages] = useState<any[]>([])
   const [iframeView, setIframeView] = useState<'desktop' | 'mobile'>('desktop')
   const [isBuilding, setIsBuilding] = useState(false)
-  const [isDeploying, setIsDeploying] = useState(false)
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false)
   const [isSendingMessage, setIsSendingMessage] = useState(false)
+  const [projectFiles, setProjectFiles] = useState<Array<{ path: string; content: string }>>([])
+  const stackblitzContainerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     fetchProject()
     fetchChatHistory()
+    fetchProjectFiles()
   }, [projectId])
+
+  // Load StackBlitz preview when files are available
+  useEffect(() => {
+    if (projectFiles.length > 0 && stackblitzContainerRef.current && project?.status === 'ready' || project?.status === 'deployed') {
+      loadStackBlitzPreview()
+    }
+  }, [projectFiles, project?.status])
 
   const fetchProject = async () => {
     const { data, error } = await supabase
@@ -60,6 +71,127 @@ export default function ProjectViewPage() {
     }
   }
 
+  const fetchProjectFiles = async () => {
+    try {
+      const { data: files, error } = await supabase
+        .from('project_files')
+        .select('file_path, file_content')
+        .eq('project_id', projectId)
+
+      if (error) {
+        console.error('Error fetching project files:', error)
+        return
+      }
+
+      if (files && files.length > 0) {
+        const formattedFiles = files.map((file) => ({
+          path: file.file_path,
+          content: file.file_content,
+        }))
+        setProjectFiles(formattedFiles)
+      }
+    } catch (error) {
+      console.error('Error fetching project files:', error)
+    }
+  }
+
+  const loadStackBlitzPreview = async () => {
+    if (!project || !stackblitzContainerRef.current || projectFiles.length === 0) return
+
+    setIsLoadingPreview(true)
+    try {
+      // Prepare files for StackBlitz
+      const filesObject: Record<string, string> = {}
+      projectFiles.forEach((file) => {
+        filesObject[file.path] = file.content
+      })
+
+      // Determine template
+      const hasPackageJson = projectFiles.some(f => f.path.includes('package.json'))
+      const hasNextConfig = projectFiles.some(f => f.path.includes('next.config'))
+
+      let template: StackBlitzProject['template'] = 'html'
+      if (hasNextConfig) {
+        template = 'node'
+      } else if (hasPackageJson) {
+        const packageFile = projectFiles.find(f => f.path.includes('package.json'))
+        if (packageFile?.content.includes('react')) {
+          template = 'create-react-app'
+        } else {
+          template = 'node'
+        }
+      }
+
+      const stackblitzProject: StackBlitzProject = {
+        files: filesObject,
+        title: project.name,
+        description: project.description || '',
+        template: template,
+      }
+
+      // Clear the container first
+      stackblitzContainerRef.current.innerHTML = ''
+
+      // Embed the project
+      await sdk.embedProject(
+        stackblitzContainerRef.current,
+        stackblitzProject,
+        {
+          openFile: 'index.html',
+          view: 'preview',
+          height: 600,
+          hideNavigation: true,
+          forceEmbedLayout: true,
+        }
+      )
+    } catch (error) {
+      console.error('Error loading StackBlitz preview:', error)
+    } finally {
+      setIsLoadingPreview(false)
+    }
+  }
+
+  const openInStackBlitz = async () => {
+    if (!project || projectFiles.length === 0) return
+
+    try {
+      const filesObject: Record<string, string> = {}
+      projectFiles.forEach((file) => {
+        filesObject[file.path] = file.content
+      })
+
+      const hasPackageJson = projectFiles.some(f => f.path.includes('package.json'))
+      const hasNextConfig = projectFiles.some(f => f.path.includes('next.config'))
+
+      let template: StackBlitzProject['template'] = 'html'
+      if (hasNextConfig) {
+        template = 'node'
+      } else if (hasPackageJson) {
+        const packageFile = projectFiles.find(f => f.path.includes('package.json'))
+        if (packageFile?.content.includes('react')) {
+          template = 'create-react-app'
+        } else {
+          template = 'node'
+        }
+      }
+
+      const stackblitzProject: StackBlitzProject = {
+        files: filesObject,
+        title: project.name,
+        description: project.description || '',
+        template: template,
+      }
+
+      await sdk.openProject(stackblitzProject, {
+        openFile: 'index.html',
+        newWindow: true,
+      })
+    } catch (error) {
+      console.error('Error opening in StackBlitz:', error)
+      alert('Failed to open in StackBlitz')
+    }
+  }
+
   const handleBuild = async () => {
     if (!project) return
 
@@ -76,6 +208,7 @@ export default function ProjectViewPage() {
       if (data.success) {
         alert(`Build successful! Generated ${data.filesCount} files.`)
         await fetchProject()
+        await fetchProjectFiles() // Refresh files for StackBlitz
       } else {
         alert(`Build failed: ${data.error}`)
       }
@@ -83,32 +216,6 @@ export default function ProjectViewPage() {
       alert(`Build error: ${error.message}`)
     } finally {
       setIsBuilding(false)
-    }
-  }
-
-  const handleDeploy = async () => {
-    if (!project) return
-
-    setIsDeploying(true)
-    try {
-      const response = await fetch('/api/projects/deploy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ projectId }),
-      })
-
-      const data = await response.json()
-
-      if (data.success) {
-        alert(`Deployment successful!\nPreview: ${data.previewUrl}`)
-        await fetchProject()
-      } else {
-        alert(`Deployment failed: ${data.error}`)
-      }
-    } catch (error: any) {
-      alert(`Deployment error: ${error.message}`)
-    } finally {
-      setIsDeploying(false)
     }
   }
 
@@ -147,8 +254,9 @@ export default function ProjectViewPage() {
           created_at: new Date().toISOString(),
         }])
 
-        // Refresh project to get updated files
+        // Refresh project and files to update preview
         await fetchProject()
+        await fetchProjectFiles()
       } else {
         alert(`Chat error: ${data.error}`)
       }
@@ -231,9 +339,14 @@ export default function ProjectViewPage() {
                 </Button>
               )}
               {(project.status === 'ready' || project.status === 'deployed') && (
-                <Button onClick={handleDeploy} disabled={isDeploying}>
-                  {isDeploying ? 'Deploying...' : project.status === 'deployed' ? 'Redeploy' : 'Deploy'}
-                </Button>
+                <>
+                  <Button onClick={handleBuild} disabled={isBuilding} variant="outline">
+                    {isBuilding ? 'Rebuilding...' : 'Rebuild'}
+                  </Button>
+                  <Button onClick={openInStackBlitz} disabled={projectFiles.length === 0}>
+                    Open in StackBlitz
+                  </Button>
+                </>
               )}
             </div>
           </div>
@@ -249,9 +362,6 @@ export default function ProjectViewPage() {
             Code
           </button>
           <button className="px-4 py-2 font-medium text-gray-600 hover:text-gray-900">
-            Deploy
-          </button>
-          <button className="px-4 py-2 font-medium text-gray-600 hover:text-gray-900">
             Share
           </button>
         </div>
@@ -262,60 +372,58 @@ export default function ProjectViewPage() {
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle>Live Preview</CardTitle>
+                  <CardTitle>Live Preview - StackBlitz WebContainer</CardTitle>
                   <div className="flex space-x-2">
                     <Button
-                      variant={iframeView === 'desktop' ? 'default' : 'outline'}
+                      variant="outline"
                       size="sm"
-                      onClick={() => setIframeView('desktop')}
+                      onClick={() => loadStackBlitzPreview()}
+                      disabled={projectFiles.length === 0 || isLoadingPreview}
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
-                    </Button>
-                    <Button
-                      variant={iframeView === 'mobile' ? 'default' : 'outline'}
-                      size="sm"
-                      onClick={() => setIframeView('mobile')}
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                      </svg>
+                      Refresh
                     </Button>
                   </div>
                 </div>
               </CardHeader>
               <CardContent>
-                <div className={`bg-gray-100 rounded-lg overflow-hidden ${iframeView === 'mobile' ? 'max-w-sm mx-auto' : ''}`}>
-                  <div className="aspect-video bg-white flex items-center justify-center">
-                    {project.preview_url ? (
-                      <iframe
-                        src={project.preview_url}
-                        className="w-full h-full"
-                        title="App Preview"
-                      />
-                    ) : (
-                      <div className="text-center p-8">
+                <div className="bg-gray-100 rounded-lg overflow-hidden">
+                  {projectFiles.length > 0 ? (
+                    <div
+                      ref={stackblitzContainerRef}
+                      className="w-full bg-white"
+                      style={{ minHeight: '600px' }}
+                    >
+                      {isLoadingPreview && (
+                        <div className="flex items-center justify-center h-96">
+                          <div className="text-center">
+                            <svg className="animate-spin h-10 w-10 text-blue-600 mx-auto mb-4" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            <p className="text-gray-600">Loading preview...</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-center p-8 h-96 flex items-center justify-center">
+                      <div>
                         <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5M7.188 2.239l.777 2.897M5.136 7.965l-2.898-.777M13.95 4.05l-2.122 2.122m-5.657 5.656l-2.12 2.122" />
                         </svg>
-                        <p className="text-gray-600">Preview not available yet</p>
+                        <p className="text-gray-600 mb-2">Build your app to see the preview</p>
+                        {project.status === 'draft' && (
+                          <Button onClick={handleBuild} disabled={isBuilding} size="sm">
+                            {isBuilding ? 'Building...' : 'Build Now'}
+                          </Button>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
-                {project.preview_url && (
-                  <div className="mt-4">
-                    <a
-                      href={project.preview_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-600 hover:underline"
-                    >
-                      🔗 Open in new tab
-                    </a>
-                  </div>
-                )}
               </CardContent>
             </Card>
           </div>
@@ -428,9 +536,6 @@ export default function ProjectViewPage() {
                 </CardContent>
               </Card>
             )}
-
-            {/* Custom Domain Management */}
-            <CustomDomainManager projectId={projectId} projectStatus={project.status} />
           </div>
         </div>
       </div>
