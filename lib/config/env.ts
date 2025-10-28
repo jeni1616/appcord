@@ -15,7 +15,9 @@ interface EnvConfig {
   // AI APIs
   ai: {
     anthropicApiKey: string;
+    anthropicModel: string;
     openaiApiKey: string;
+    openaiModel: string;
   };
   // Vercel (optional)
   vercel?: {
@@ -57,7 +59,9 @@ function loadEnvConfig(): EnvConfig {
 
   // Validate required AI API keys
   const anthropicApiKey = requireEnv('ANTHROPIC_API_KEY');
+  const anthropicModel = getEnv('ANTHROPIC_MODEL') || 'claude-haiku-4-5-20251001';
   const openaiApiKey = requireEnv('OPENAI_API_KEY');
+  const openaiModel = getEnv('OPENAI_MODEL') || 'gpt-5-nano';
 
   // Optional Vercel configuration
   const vercelToken = getEnv('VERCEL_TOKEN');
@@ -71,7 +75,9 @@ function loadEnvConfig(): EnvConfig {
     },
     ai: {
       anthropicApiKey,
+      anthropicModel,
       openaiApiKey,
+      openaiModel,
     },
     ...(vercelToken && {
       vercel: {
@@ -102,7 +108,9 @@ try {
     },
     ai: {
       anthropicApiKey: 'test-anthropic-key',
+      anthropicModel: 'claude-haiku-4-5-20251001',
       openaiApiKey: 'test-openai-key',
+      openaiModel: 'gpt-5-nano',
     },
   };
 }

@@ -8,7 +8,7 @@ const anthropic = new Anthropic({
 export async function generateScopeWithClaude(prompt: string) {
   try {
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: env.ai.anthropicModel,
       max_tokens: 2000,
       messages: [
         {
@@ -59,7 +59,7 @@ ${prompt}`
 export async function refineScopeWithClaude(originalScope: any, userFeedback: string) {
   try {
     const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: env.ai.anthropicModel,
       max_tokens: 2000,
       messages: [
         {
