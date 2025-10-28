@@ -1,7 +1,8 @@
 import OpenAI from 'openai'
+import { env } from '@/lib/config/env'
 
 const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+  apiKey: env.ai.openaiApiKey,
 })
 
 export async function generateScopeWithGPT(prompt: string) {
