@@ -1,0 +1,44 @@
+version: '3.9'
+
+services:
+  # Next.js Application (Development)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: appcord-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - WATCHPACK_POLLING=true
+    volumes:
+      # Mount source code for hot reload
+      - .:/app
+      # Named volumes for dependencies and cache
+      - node_modules:/app/node_modules
+      - nextjs_cache:/app/.next
+    networks:
+      - appcord-network
+    stdin_open: true
+    tty: true
+
+# Named volumes
+volumes:
+  # Volume for node_modules to speed up container startup
+  node_modules:
+    name: appcord-node-modules
+
+  # Volume for Next.js cache to speed up builds
+  nextjs_cache:
+    name: appcord-nextjs-cache
+
+# Network
+networks:
+  appcord-network:
+    name: appcord-network
+    driver: bridge
