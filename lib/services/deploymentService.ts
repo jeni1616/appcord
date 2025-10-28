@@ -1,4 +1,4 @@
-import { env, isVercelConfigured } from '@/lib/config/env';
+import { getServerEnv, isVercelConfigured } from '@/lib/config/env';
 
 interface VercelDeployment {
   id: string;
@@ -20,8 +20,9 @@ export class DeploymentService {
   private vercelTeamId?: string;
 
   constructor() {
-    this.vercelToken = env.vercel?.token || '';
-    this.vercelTeamId = env.vercel?.teamId;
+    const serverEnv = getServerEnv();
+    this.vercelToken = serverEnv.vercel?.token || '';
+    this.vercelTeamId = serverEnv.vercel?.teamId;
   }
 
   /**

@@ -1,14 +1,16 @@
 import OpenAI from 'openai'
-import { env } from '@/lib/config/env'
+import { getServerEnv } from '@/lib/config/env'
+
+const serverEnv = getServerEnv()
 
 const openai = new OpenAI({
-  apiKey: env.ai.openaiApiKey,
+  apiKey: serverEnv.ai.openaiApiKey,
 })
 
 export async function generateScopeWithGPT(prompt: string) {
   try {
     const completion = await openai.chat.completions.create({
-      model: env.ai.openaiModel,
+      model: serverEnv.ai.openaiModel,
       messages: [
         {
           role: "system",
@@ -52,7 +54,7 @@ Your response MUST be in this exact JSON format:
 export async function generateCodeWithGPT(prompt: string, context: any) {
   try {
     const completion = await openai.chat.completions.create({
-      model: env.ai.openaiModel,
+      model: serverEnv.ai.openaiModel,
       messages: [
         {
           role: "system",

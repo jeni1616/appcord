@@ -1,10 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
 import { Database } from '@/types/database'
-import { env } from '@/lib/config/env'
+import { getServerEnv } from '@/lib/config/env'
+
+const serverEnv = getServerEnv()
 
 export const supabaseAdmin = createClient<Database>(
-  env.supabase.url,
-  env.supabase.serviceRoleKey,
+  serverEnv.supabase.url,
+  serverEnv.supabase.serviceRoleKey,
   {
     auth: {
       autoRefreshToken: false,

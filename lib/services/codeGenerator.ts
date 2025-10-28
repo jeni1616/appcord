@@ -1,13 +1,15 @@
 import OpenAI from 'openai';
 import Anthropic from '@anthropic-ai/sdk';
-import { env } from '@/lib/config/env';
+import { getServerEnv } from '@/lib/config/env';
+
+const serverEnv = getServerEnv();
 
 const openai = new OpenAI({
-  apiKey: env.ai.openaiApiKey,
+  apiKey: serverEnv.ai.openaiApiKey,
 });
 
 const anthropic = new Anthropic({
-  apiKey: env.ai.anthropicApiKey,
+  apiKey: serverEnv.ai.anthropicApiKey,
 });
 
 export interface GeneratedFile {
