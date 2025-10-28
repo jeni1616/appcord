@@ -1,14 +1,16 @@
 import Anthropic from '@anthropic-ai/sdk'
-import { env } from '@/lib/config/env'
+import { getServerEnv } from '@/lib/config/env'
+
+const serverEnv = getServerEnv()
 
 const anthropic = new Anthropic({
-  apiKey: env.ai.anthropicApiKey,
+  apiKey: serverEnv.ai.anthropicApiKey,
 })
 
 export async function generateScopeWithClaude(prompt: string) {
   try {
     const message = await anthropic.messages.create({
-      model: env.ai.anthropicModel,
+      model: serverEnv.ai.anthropicModel,
       max_tokens: 2000,
       messages: [
         {
@@ -59,7 +61,7 @@ ${prompt}`
 export async function refineScopeWithClaude(originalScope: any, userFeedback: string) {
   try {
     const message = await anthropic.messages.create({
-      model: env.ai.anthropicModel,
+      model: serverEnv.ai.anthropicModel,
       max_tokens: 2000,
       messages: [
         {
