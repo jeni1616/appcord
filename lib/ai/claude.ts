@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
+import { env } from '@/lib/config/env'
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
+  apiKey: env.ai.anthropicApiKey,
 })
 
 export async function generateScopeWithClaude(prompt: string) {

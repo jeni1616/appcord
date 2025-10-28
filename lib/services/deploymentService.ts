@@ -1,3 +1,5 @@
+import { env, isVercelConfigured } from '@/lib/config/env';
+
 interface VercelDeployment {
   id: string;
   url: string;
@@ -18,8 +20,8 @@ export class DeploymentService {
   private vercelTeamId?: string;
 
   constructor() {
-    this.vercelToken = process.env.VERCEL_TOKEN || '';
-    this.vercelTeamId = process.env.VERCEL_TEAM_ID;
+    this.vercelToken = env.vercel?.token || '';
+    this.vercelTeamId = env.vercel?.teamId;
   }
 
   /**
