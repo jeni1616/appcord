@@ -8,7 +8,7 @@ const openai = new OpenAI({
 export async function generateScopeWithGPT(prompt: string) {
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: env.ai.openaiModel,
       messages: [
         {
           role: "system",
@@ -52,7 +52,7 @@ Your response MUST be in this exact JSON format:
 export async function generateCodeWithGPT(prompt: string, context: any) {
   try {
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: env.ai.openaiModel,
       messages: [
         {
           role: "system",
