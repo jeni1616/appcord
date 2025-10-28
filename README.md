@@ -13,7 +13,7 @@ Transform text descriptions into fully functional, production-ready web applicat
 - **Iterative Todo-Based Planning**: Transparent workflow showing exactly what will be built
 - **Hybrid AI Strategy**: Leverage both OpenAI and Claude for optimal results
 - **Supabase-First Architecture**: Native integration with Supabase for instant backend
-- **Live Preview During Build**: Real-time progress updates with build status
+- **Live Preview with StackBlitz WebContainers**: Instant in-browser preview using WebContainers technology
 - **Full Code Access**: View, download, and customize generated code
 - **Modern Tech Stack**: Next.js 16, TypeScript, Tailwind CSS, shadcn/ui
 
@@ -26,6 +26,7 @@ Before you begin, ensure you have the following installed:
 - OpenAI API key
 - Anthropic (Claude) API key
 - Stripe account (for payment integration)
+- StackBlitz account (optional, for enhanced features)
 
 ## 🛠️ Installation
 
@@ -131,7 +132,9 @@ appcord/
 3. **Describe your app** in plain English (be detailed!)
 4. **Review the generated scope** and customize the todo list
 5. **Click "Build App"** and watch AI create your application
-6. **Preview and iterate** on your app with AI chat
+6. **Preview instantly** in StackBlitz WebContainers - no deployment needed!
+7. **Iterate and refine** your app with AI chat
+8. **Open in StackBlitz** to edit code and deploy anywhere
 
 ### Example Project Descriptions
 
@@ -178,20 +181,22 @@ Configure in `lib/ai/`:
 
 ## 📦 Deployment
 
-### Deploy to Vercel (Recommended)
+### Preview with StackBlitz WebContainers
 
-1. **Push your code to GitHub**
-2. **Import project in Vercel**
-3. **Add environment variables**
-4. **Deploy!**
+AppCord uses StackBlitz WebContainers for instant in-browser previews:
+- No deployment needed for testing
+- Real-time preview as you build
+- Full Node.js environment in the browser
+- Click "Open in StackBlitz" to edit and deploy
 
-```bash
-npm run build
-```
+### Deploy Your Generated App
 
-### Deploy Anywhere Else
+Once you've built your app, you can deploy it anywhere:
 
-Build the production bundle:
+1. **Export Code** from the project view
+2. **Deploy to Vercel, Netlify, or any platform**
+3. **Or continue editing in StackBlitz** and deploy from there
+
 ```bash
 npm run build
 npm start
@@ -238,9 +243,10 @@ Update the default tech stack in:
 - Try refreshing and generating again
 
 **Preview not loading:**
-- Check the preview URL is valid
-- Ensure the build completed successfully
-- Check browser console for errors
+- Ensure the build completed successfully (status: ready or deployed)
+- Check browser console for StackBlitz errors
+- Try refreshing the preview using the Refresh button
+- Verify project files were generated correctly
 
 ## 📄 License
 

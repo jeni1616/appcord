@@ -4,12 +4,11 @@ This document describes the newly implemented features in AppCord, an AI-powered
 
 ## Overview
 
-AppCord now includes a complete code generation and deployment pipeline with the following major features:
+AppCord now includes a complete code generation and preview pipeline with the following major features:
 
 1. **Actual Code Generation Engine** - Generate real, production-ready Next.js applications
-2. **Real Deployment to Preview Environments** - Deploy to Vercel with live preview URLs
+2. **Instant Preview with StackBlitz WebContainers** - Live in-browser preview without deployment
 3. **Advanced AI Chat Iterations** - Iteratively refine your app through natural language chat
-4. **Custom Domain Management** - Add and manage custom domains for deployed apps
 
 ---
 
@@ -65,65 +64,71 @@ Generated files are stored in the `project_files` table:
 
 ---
 
-## 2. Deployment Service (Vercel Integration)
+## 2. StackBlitz WebContainers Preview
 
 ### Implementation Files
-- `/lib/services/deploymentService.ts` - Vercel deployment service
-- `/app/api/projects/deploy/route.ts` - Deployment API endpoint
+- `/lib/services/stackblitzService.ts` - StackBlitz integration service
+- `/app/project/[id]/page.tsx` - Project view with embedded StackBlitz preview
 
 ### Features
-- Automated deployment to Vercel
-- Creates Vercel projects if they don't exist
-- Generates preview URLs for instant testing
-- Tracks deployment status and history
-- Environment variable management
+- Instant in-browser preview using WebContainers technology
+- No backend deployment required for testing
+- Full Node.js environment runs directly in the browser
+- Real-time preview updates as code changes
+- "Open in StackBlitz" button for full editing experience
+- Automatic template detection (Next.js, React, HTML, etc.)
 
 ### Setup Requirements
 
-Add these environment variables to your `.env.local`:
+No additional environment variables needed! StackBlitz SDK is included via npm:
 
-```env
-VERCEL_TOKEN=your_vercel_token_here
-VERCEL_TEAM_ID=your_team_id_here (optional)
+```bash
+npm install @stackblitz/sdk
 ```
 
-To get a Vercel token:
-1. Go to https://vercel.com/account/tokens
-2. Create a new token with deployment permissions
-3. Add it to your environment variables
+### How It Works
 
-### API Usage
+The preview is embedded directly in the project view page:
 
-```javascript
-POST /api/projects/deploy
-Content-Type: application/json
-
-{
-  "projectId": "uuid-here"
-}
-
-// Response
-{
-  "success": true,
-  "previewUrl": "https://your-app-abc123.vercel.app",
-  "productionUrl": "https://your-app.vercel.app"
-}
-```
-
-### Deployment Flow
 1. Fetch generated files from `project_files` table
-2. Create or get existing Vercel project
-3. Upload files to Vercel
-4. Wait for deployment to complete (max 5 minutes)
-5. Update project with preview/production URLs
-6. Create deployment record in `deployments` table
+2. Prepare files for StackBlitz SDK format
+3. Detect appropriate template (node, react, html, etc.)
+4. Embed project using StackBlitz WebContainers
+5. Preview runs instantly in the browser
+
+### StackBlitz Integration
+
+```typescript
+import sdk from '@stackblitz/sdk'
+
+// Embed project in page
+await sdk.embedProject(
+  containerElement,
+  {
+    files: projectFiles,
+    title: projectName,
+    description: projectDescription,
+    template: 'node' // or 'react', 'html', etc.
+  },
+  {
+    view: 'preview',
+    height: 600,
+    hideNavigation: true
+  }
+)
+
+// Open in new window
+await sdk.openProject(stackblitzProject, {
+  newWindow: true
+})
+```
 
 ### Project Status States
 - `draft` → Initial state after project creation
 - `building` → Code generation in progress
-- `ready` → Code generated, ready to deploy
-- `deployed` → Successfully deployed to Vercel
-- `failed` → Build or deployment failed
+- `ready` → Code generated, preview available
+- `deployed` → Synonym for ready (maintained for compatibility)
+- `failed` → Build or generation failed
 
 ---
 
@@ -217,99 +222,6 @@ GET /api/projects/chat?projectId=uuid-here
 
 ---
 
-## 4. Custom Domain Management
-
-### Implementation Files
-- `/app/api/projects/domains/route.ts` - Domain management API
-- `/components/CustomDomainManager.tsx` - UI component
-- `/lib/services/deploymentService.ts` - Vercel domain integration
-
-### Features
-- Add custom domains to deployed projects
-- DNS configuration guidance
-- Domain verification
-- Multiple domains per project
-- Automatic SSL certificates (via Vercel)
-
-### API Endpoints
-
-```javascript
-// Get domains for a project
-GET /api/projects/domains?projectId=uuid-here
-
-// Add domain
-POST /api/projects/domains
-{
-  "projectId": "uuid-here",
-  "domain": "myapp.example.com"
-}
-
-// Verify domain
-PATCH /api/projects/domains
-{
-  "domainId": "uuid-here"
-}
-
-// Remove domain
-DELETE /api/projects/domains?domainId=uuid-here
-```
-
-### Domain Setup Process
-
-1. **Add Domain**
-   - User submits domain name
-   - System validates format
-   - Domain added to Vercel project
-   - DNS records returned to user
-
-2. **Configure DNS**
-   User adds DNS records at their provider:
-   ```
-   Type: A
-   Name: @
-   Value: 76.76.21.21
-
-   Type: CNAME
-   Name: www
-   Value: cname.vercel-dns.com
-   ```
-
-3. **Verify Domain**
-   - User clicks "Verify" button
-   - System checks DNS propagation
-   - Updates domain status to "active"
-   - SSL certificate auto-provisioned
-
-### Database Schema
-
-**custom_domains table:**
-- `project_id` - Reference to project
-- `domain` - Domain name (unique)
-- `verified` - Boolean status
-- `verification_token` - Security token
-- `dns_records` - JSON of required records
-- `status` - 'pending', 'verifying', 'active', 'failed'
-- `created_at` - When added
-- `verified_at` - When verified
-
-**projects table (new fields):**
-- `custom_domain` - Current custom domain
-- `custom_domain_verified` - Verification status
-- `vercel_project_id` - Vercel project reference
-
-### UI Component Usage
-
-```tsx
-import { CustomDomainManager } from "@/components/CustomDomainManager"
-
-<CustomDomainManager
-  projectId={project.id}
-  projectStatus={project.status}
-/>
-```
-
----
-
 ## Updated Project Workflow
 
 ### Complete User Journey
@@ -327,12 +239,12 @@ import { CustomDomainManager } from "@/components/CustomDomainManager"
    - Status changes: `draft` → `building` → `ready`
    - Files stored in database
 
-3. **Deploy to Vercel**
-   - Click "Deploy" button
-   - Code uploaded to Vercel
-   - Preview URL generated
-   - Status changes: `ready` → `deployed`
-   - Live app accessible
+3. **Preview Instantly**
+   - StackBlitz WebContainer loads automatically
+   - Live preview appears in browser
+   - No deployment or waiting required
+   - Full Node.js environment running locally
+   - Click "Open in StackBlitz" to edit in new window
 
 4. **Iterate with AI**
    - Use chat to request changes
@@ -340,13 +252,13 @@ import { CustomDomainManager } from "@/components/CustomDomainManager"
    - "Add a contact form"
    - "Change the color scheme to purple"
    - Each message refines the code
-   - Click "Redeploy" to see changes live
+   - Preview updates automatically after rebuild
 
-5. **Add Custom Domain**
-   - Enter your domain name
-   - Configure DNS records as shown
-   - Click "Verify Domain"
-   - App accessible at custom URL
+5. **Deploy Anywhere**
+   - Click "Open in StackBlitz" for full editing
+   - Export code and deploy to any platform
+   - Deploy directly from StackBlitz
+   - Or download and deploy locally
 
 ---
 
@@ -355,19 +267,24 @@ import { CustomDomainManager } from "@/components/CustomDomainManager"
 Create a `.env.local` file with:
 
 ```env
-# Supabase (existing)
+# Supabase
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_key
 
-# AI Services (existing)
+# AI Services
 OPENAI_API_KEY=your_openai_key
 ANTHROPIC_API_KEY=your_anthropic_key
 
-# NEW: Vercel Deployment
-VERCEL_TOKEN=your_vercel_token
-VERCEL_TEAM_ID=your_team_id (optional)
+# Stripe (for payments)
+STRIPE_SECRET_KEY=your_stripe_secret_key
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=your_stripe_publishable_key
+
+# App Configuration
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
+
+Note: StackBlitz preview requires no additional environment variables!
 
 ---
 
@@ -404,13 +321,8 @@ Or simply run the complete updated schema file:
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/api/projects/generate-code` | POST | Generate code for project |
-| `/api/projects/deploy` | POST | Deploy to Vercel |
 | `/api/projects/chat` | POST | Send chat message |
 | `/api/projects/chat` | GET | Get chat history |
-| `/api/projects/domains` | GET | List domains |
-| `/api/projects/domains` | POST | Add domain |
-| `/api/projects/domains` | PATCH | Verify domain |
-| `/api/projects/domains` | DELETE | Remove domain |
 
 ---
 
@@ -423,11 +335,12 @@ Or simply run the complete updated schema file:
 # Check Supabase project_files table for generated files
 ```
 
-### 2. Test Deployment
+### 2. Test StackBlitz Preview
 ```bash
-# After building, click "Deploy"
-# Visit the preview URL
-# Check Vercel dashboard for new project
+# After building, preview loads automatically
+# Check that StackBlitz container appears
+# Verify preview shows your app
+# Test "Open in StackBlitz" button
 ```
 
 ### 3. Test Chat
@@ -436,14 +349,6 @@ Or simply run the complete updated schema file:
 # "Add a dark mode toggle"
 # "Make the buttons rounded"
 # Check that files update in database
-```
-
-### 4. Test Custom Domain
-```bash
-# Add domain in UI
-# Configure DNS as instructed
-# Wait for propagation (5-30 minutes)
-# Click "Verify Domain"
 ```
 
 ---
@@ -469,23 +374,17 @@ Free tier: 10,000 tokens (enough for 1-2 complete apps)
 - Check build logs in `builds` table
 - Error messages stored in `error_message` field
 
-### Deployment Fails
-- Verify VERCEL_TOKEN is valid
-- Check Vercel account has deployment permissions
-- Review deployment logs
-- Ensure project status is `ready` before deploying
+### Preview Not Loading
+- Verify project has generated files
+- Check browser console for StackBlitz errors
+- Try refreshing the preview
+- Ensure browser supports WebContainers (modern Chrome/Edge/Firefox)
 
 ### Chat Not Working
 - Project must be in `ready` or `deployed` status
 - Check user token balance
 - Verify project has generated files
 - Review chat error messages
-
-### Domain Verification Fails
-- DNS changes can take 5-30 minutes to propagate
-- Verify DNS records match exactly
-- Use `dig` or `nslookup` to check DNS
-- Try verification again after waiting
 
 ---
 
@@ -495,10 +394,11 @@ Potential additions to consider:
 - GitHub repository integration
 - Export code as ZIP download
 - Real-time build logs streaming
-- A/B testing for deployments
+- Direct deployment to Vercel/Netlify from UI
 - Analytics integration
 - Team collaboration features
 - Version history and rollbacks
+- Hot reloading in StackBlitz preview
 
 ---
 
@@ -508,8 +408,8 @@ For issues or questions:
 1. Check the troubleshooting section above
 2. Review API error messages
 3. Check Supabase logs
-4. Review Vercel deployment logs
-5. Examine browser console for client errors
+4. Examine browser console for StackBlitz errors
+5. Verify browser compatibility with WebContainers
 
 ---
 
